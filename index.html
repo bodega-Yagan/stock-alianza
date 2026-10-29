@@ -415,12 +415,13 @@ function combo(input,res,onPick,pillFn,allowFn,filtroStock){let act=-1,list=[],v
     res.innerHTML=input.value.trim()?(list.map((p,i)=>`<div class="ri ${i===act?'act':''}" data-i="${i}"><span class="pill">${pillFn(p)}</span><b>${resaltar(p.sku,q)}</b> ${resaltar(p.desc,q)}</div>`).join('')+extra||'<div class="ri muted">Sin resultados</div>'):'';};
   const mark=()=>res.querySelectorAll('.ri[data-i]').forEach((d,i)=>d.classList.toggle('act',i===act));
   input.addEventListener('input',draw);
+  input.addEventListener('blur',()=>{verTodo=false;});
   input.addEventListener('focus',()=>{if(input.value.trim()&&!input.dataset.sel)draw();});
   input.addEventListener('keydown',e=>{if(!list.length)return;
     if(e.key==='ArrowDown'){act=Math.min(act+1,list.length-1);mark();e.preventDefault();}
     else if(e.key==='ArrowUp'){act=Math.max(act-1,0);mark();e.preventDefault();}
-    else if(e.key==='Enter'&&act>=0){e.preventDefault();res.innerHTML='';onPick(list[act]);}});
-  res.addEventListener('mousedown',e=>{if(e.target.closest('[data-todo]')){e.preventDefault();verTodo=true;draw();return;}const d=e.target.closest('[data-i]');if(d){e.preventDefault();res.innerHTML='';onPick(list[+d.dataset.i]);}});
+    else if(e.key==='Enter'&&act>=0){e.preventDefault();res.innerHTML='';verTodo=false;onPick(list[act]);}});
+  res.addEventListener('mousedown',e=>{if(e.target.closest('[data-todo]')){e.preventDefault();verTodo=true;draw();return;}const d=e.target.closest('[data-i]');if(d){e.preventDefault();res.innerHTML='';verTodo=false;onPick(list[+d.dataset.i]);}});
   return {draw};}
 
 /* ---------- EDITOR DE LÍNEAS (traspaso múltiple) ---------- */
@@ -761,7 +762,7 @@ function arrancar(){call('getConfig').then(cfg=>{S.bod=cfg.bodegas;S.cor=cfg.cor
 arrancar();
 document.addEventListener('click',e=>{if(!e.target.closest('.search'))document.querySelectorAll('.res').forEach(r=>r.innerHTML='');});
 </script>
-<div id="app-ver" style="position:fixed;left:8px;bottom:4px;font-size:11px;color:#8a99ad;z-index:5;pointer-events:none">versión 29-10 · solo con stock</div>
+<div id="app-ver" style="position:fixed;left:8px;bottom:4px;font-size:11px;color:#8a99ad;z-index:5;pointer-events:none">versión 29-10 B</div>
 <button id="btn-inst" class="hidden" onclick="instalarApp()" style="position:fixed;right:14px;bottom:14px;z-index:30;background:#4fb1d7;color:#072c5f;border:0;border-radius:24px;padding:12px 18px;font-weight:700;font-size:15px;box-shadow:0 4px 14px #0003">⬇ Instalar app</button>
 <script>
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
