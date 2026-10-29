@@ -365,6 +365,10 @@ const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''
 const fmtN=n=>(Number(n)||0).toLocaleString('es-CL',{maximumFractionDigits:2});
 const stk=(sku,b)=>((S.stock[sku]||{})[b])||0;
 const tot=sku=>S.bod.reduce((a,b)=>a+stk(sku,b),0);
+// Menús de productos: por defecto solo muestran los que tienen stock cargado (operarios no ven stock: sin filtro)
+const hayStock=()=>Object.keys(S.stock||{}).length>0;
+const conStock=()=>hayStock()?new Set(Object.keys(S.stock).filter(k=>tot(k)!==0)):null;
+const conStockEn=b=>()=>hayStock()?new Set(Object.keys(S.stock).filter(k=>stk(k,b())>0)):null;
 const corto=b=>S.cor[S.bod.indexOf(b)]||b;
 
 // Funciona dentro de Apps Script (google.script.run) y como app instalable en GitHub (fetch a la URL /exec)
@@ -402,9 +406,13 @@ function buscarTodos(q,allow){const w=norm(q).split(/\s+/).filter(Boolean);if(!w
   return S.productos.filter(p=>(!allow||allow.has(p.sku))&&w.every(x=>norm(p.sku+' '+p.desc).includes(x)))
     .sort((a,b)=>(norm(b.sku).startsWith(w[0])-norm(a.sku).startsWith(w[0])));}
 function buscarProd(q,allow){return buscarTodos(q,allow).slice(0,30);}
-function combo(input,res,onPick,pillFn,allowFn){let act=-1,list=[];
-  const draw=()=>{const q=norm(input.value).split(/\s+/)[0]||'';list=buscarProd(input.value,allowFn&&allowFn());act=list.length?0:-1;
-    res.innerHTML=input.value.trim()?(list.map((p,i)=>`<div class="ri ${i===act?'act':''}" data-i="${i}"><span class="pill">${pillFn(p)}</span><b>${resaltar(p.sku,q)}</b> ${resaltar(p.desc,q)}</div>`).join('')||'<div class="ri muted">Sin resultados</div>'):'';};
+function combo(input,res,onPick,pillFn,allowFn,filtroStock){let act=-1,list=[],verTodo=false;
+  const draw=()=>{const q=norm(input.value).split(/\s+/)[0]||'';if(!input.value.trim())verTodo=false;
+    const allow=allowFn&&!(filtroStock&&verTodo)?allowFn():null;list=buscarProd(input.value,allow);act=list.length?0:-1;
+    let extra='';
+    if(filtroStock&&allow&&!verTodo){const n=buscarTodos(input.value,null).length-buscarTodos(input.value,allow).length;
+      if(n>0)extra=`<div class="ri muted" data-todo="1" style="cursor:pointer">${list.length?'':'Sin stock cargado. '}<u>Ver también ${n} sin stock</u></div>`;}
+    res.innerHTML=input.value.trim()?(list.map((p,i)=>`<div class="ri ${i===act?'act':''}" data-i="${i}"><span class="pill">${pillFn(p)}</span><b>${resaltar(p.sku,q)}</b> ${resaltar(p.desc,q)}</div>`).join('')+extra||'<div class="ri muted">Sin resultados</div>'):'';};
   const mark=()=>res.querySelectorAll('.ri[data-i]').forEach((d,i)=>d.classList.toggle('act',i===act));
   input.addEventListener('input',draw);
   input.addEventListener('focus',()=>{if(input.value.trim()&&!input.dataset.sel)draw();});
@@ -412,7 +420,7 @@ function combo(input,res,onPick,pillFn,allowFn){let act=-1,list=[];
     if(e.key==='ArrowDown'){act=Math.min(act+1,list.length-1);mark();e.preventDefault();}
     else if(e.key==='ArrowUp'){act=Math.max(act-1,0);mark();e.preventDefault();}
     else if(e.key==='Enter'&&act>=0){e.preventDefault();res.innerHTML='';onPick(list[act]);}});
-  res.addEventListener('mousedown',e=>{const d=e.target.closest('[data-i]');if(d){e.preventDefault();res.innerHTML='';onPick(list[+d.dataset.i]);}});
+  res.addEventListener('mousedown',e=>{if(e.target.closest('[data-todo]')){e.preventDefault();verTodo=true;draw();return;}const d=e.target.closest('[data-i]');if(d){e.preventDefault();res.innerHTML='';onPick(list[+d.dataset.i]);}});
   return {draw};}
 
 /* ---------- EDITOR DE LÍNEAS (traspaso múltiple) ---------- */
@@ -420,13 +428,13 @@ class LineEditor{
   constructor(box,opts){this.o=opts;this.lines=[];
     box.innerHTML='<div class="search"><input class="q" type="search" placeholder="🔎 Agregar producto por nombre o SKU" autocomplete="off"><div class="res"></div></div><div class="lines"></div>';
     this.q=box.querySelector('.q');this.box=box.querySelector('.lines');
-    this.cb=combo(this.q,box.querySelector('.res'),p=>{this.agregar(p.sku);this.q.value='';},p=>`${esc(corto(this.o.bodega()))}: ${fmtN(stk(p.sku,this.o.bodega()))}`);
+    this.cb=combo(this.q,box.querySelector('.res'),p=>{this.agregar(p.sku);this.q.value='';},p=>`${esc(corto(this.o.bodega()))}: ${fmtN(stk(p.sku,this.o.bodega()))}`,conStockEn(this.o.bodega),true);
     this.box.addEventListener('input',e=>{const i=e.target.dataset.i;if(i!=null)this.lines[i].cant=e.target.value;});
     this.box.addEventListener('click',e=>{const b=e.target.closest('[data-del]');if(b){this.lines.splice(+b.dataset.del,1);this.render();}});
     this.render();}
   agregar(sku){if(this.lines.some(l=>l.sku===sku)){toast('Ese producto ya está en la lista');return;}
     this.lines.push({sku,cant:''});this.render();const inp=this.box.querySelector(`[data-i="${this.lines.length-1}"]`);inp&&inp.focus();}
-  render(){const b=this.o.bodega();
+  render(){const b=this.o.bodega();if(this.cb&&this.q.value.trim())this.cb.draw();
     this.box.innerHTML=this.lines.map((l,i)=>{const p=S.pmap[l.sku]||{};
       return `<div class="line"><div class="li"><b>${esc(l.sku)}</b> ${esc(p.desc||'')}<br><small>Disponible en ${esc(corto(b))}: <b>${fmtN(stk(l.sku,b))}</b> ${esc(p.und||'')}</small></div>
       <input type="number" inputmode="decimal" min="0" step="any" data-i="${i}" value="${esc(l.cant)}" placeholder="Cant.">
@@ -677,9 +685,9 @@ function renderIvSel(){const n=S.ivSkus.length;
   el('iv-plist').innerHTML=!n?'<div class="muted">Sin productos elegidos: se contarán <b>todos</b> los productos.</div>':
    `<div style="font-size:14px"><b>${n} producto(s) elegidos</b> · <span class="lnk" onclick="S.ivSkus=[];renderIvSel()">quitar todos</span></div>
    <div style="max-height:260px;overflow:auto">${S.ivSkus.map(s=>{const p=S.pmap[s]||{desc:''};return `<div class="pl"><span><b>${esc(s)}</b> ${esc(p.desc)}</span><button class="x" onclick="quitarIv('${esc(s)}')">✕</button></div>`;}).join('')}</div>`;}
-function ivSugerirTodos(){const q=val('iv-pq');const L=q.length>=2?buscarTodos(q).filter(p=>!S.ivSkus.includes(p.sku)):[];
-  el('iv-pacc').innerHTML=L.length>1?`<button class="btn sec sm" style="margin-bottom:6px" onmousedown="event.preventDefault()" onclick="ivAgregarTodos()">+ Agregar los ${L.length} que coinciden con "${esc(q)}"</button>`:'';}
-function ivAgregarTodos(){buscarTodos(val('iv-pq')).forEach(p=>{if(!S.ivSkus.includes(p.sku))S.ivSkus.push(p.sku);});el('iv-pq').value='';el('iv-pres').innerHTML='';el('iv-pacc').innerHTML='';renderIvSel();}
+function ivSugerirTodos(){const q=val('iv-pq');const L=q.length>=2?buscarTodos(q,conStock()).filter(p=>!S.ivSkus.includes(p.sku)):[];
+  el('iv-pacc').innerHTML=L.length>1?`<button class="btn sec sm" style="margin-bottom:6px" onmousedown="event.preventDefault()" onclick="ivAgregarTodos()">+ Agregar los ${L.length} con stock que coinciden con "${esc(q)}"</button>`:'';}
+function ivAgregarTodos(){buscarTodos(val('iv-pq'),conStock()).forEach(p=>{if(!S.ivSkus.includes(p.sku))S.ivSkus.push(p.sku);});el('iv-pq').value='';el('iv-pres').innerHTML='';el('iv-pacc').innerHTML='';renderIvSel();}
 async function nuevoInv(btn){const d={desc:val('iv-desc')||'Inventario',asignado:val('iv-asig')||'TODOS',bodega:val('iv-bod')||'TODAS',skus:S.ivSkus.slice()};
   const quien=el('iv-asig').selectedOptions[0]?el('iv-asig').selectedOptions[0].textContent:'Todos';
   if(!confirm(`¿Abrir "${d.desc}"?\nAsignado a: ${quien}\nBodega: ${d.bodega==='TODAS'?'Todas':corto(d.bodega)}\nProductos: ${d.skus.length||'Todos'}`))return;
@@ -737,14 +745,14 @@ function arrancar(){call('getConfig').then(cfg=>{S.bod=cfg.bodegas;S.cor=cfg.cor
   el('qt-o').value=el('tr-o').value=S.bod[2];el('qt-d').value=el('tr-d').value=S.bod[0];
   el('hi-b').innerHTML='<option value="">Todas las bodegas</option>'+opts;
   const fq=el('fi-q');
-  combo(fq,el('fi-res'),seleccionar,p=>'Total '+fmtN(tot(p.sku)));
+  combo(fq,el('fi-res'),seleccionar,p=>'Total '+fmtN(tot(p.sku)),conStock,true);
   fq.addEventListener('input',()=>{delete fq.dataset.sel;});
   fq.addEventListener('focus',()=>{if(fq.dataset.sel)fq.select();});
   edTr=new LineEditor(el('ed-tr'),{bodega:()=>el('tr-o').value});
   el('co-b').innerHTML=opts;
   combo(el('co-q'),el('co-res'),elegirConteo,p=>esc(p.und),permitidos); // a ciegas: no muestra stock; solo productos asignados
   el('iv-bod').innerHTML='<option value="TODAS">Todas</option>'+opts;
-  combo(el('iv-pq'),el('iv-pres'),p=>{addIv(p.sku);el('iv-pq').value='';el('iv-pacc').innerHTML='';},p=>S.ivSkus.includes(p.sku)?'✓ agregado':'Total '+fmtN(tot(p.sku)));
+  combo(el('iv-pq'),el('iv-pres'),p=>{addIv(p.sku);el('iv-pq').value='';el('iv-pacc').innerHTML='';},p=>S.ivSkus.includes(p.sku)?'✓ agregado':'Total '+fmtN(tot(p.sku)),conStock,true);
   el('iv-pq').addEventListener('input',ivSugerirTodos);
   renderOps();
   let ses=null;try{ses=JSON.parse(localStorage.getItem('alz_ses')||'null');}catch(e){}
@@ -765,5 +773,7 @@ async function instalarApp(){
   if(pedidoInst){pedidoInst.prompt();const r=await pedidoInst.userChoice;pedidoInst=null;if(r.outcome==='accepted')document.getElementById('btn-inst').classList.add('hidden');return;}
   alert(/iphone|ipad|ipod/i.test(navigator.userAgent)?'En iPhone: abre esta página en Safari, toca el botón Compartir (cuadrado con flecha) y elige "Agregar a inicio".':'Chrome todavía no habilita la instalación automática.\n\nHazlo así: menú ⋮ (arriba a la derecha) → "Transmitir, guardar y compartir" → "Instalar página como app".\n\nTambién puede aparecer un ícono de pantalla con flecha al lado derecho de la barra de direcciones.\n\nSi no aparece ninguna opción, recarga con Ctrl+F5 y espera unos segundos.');}
 </script>
+
+</html>
 </body>
 </html>
