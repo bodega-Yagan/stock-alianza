@@ -112,6 +112,7 @@
   .lnk{color:var(--az2);text-decoration:underline;cursor:pointer}
   #login{padding:30px 18px;min-height:100vh;background:linear-gradient(180deg,#fff 0,#fff 55%,var(--cel) 100%)}
   #login>*{max-width:380px;margin-left:auto;margin-right:auto}
+  #login input{display:block}
   #login .logo{text-align:center;margin-bottom:12px}
   #login img{width:170px;max-width:60%}
   #toast{position:fixed;left:12px;right:12px;bottom:14px;background:#22303e;color:#fff;padding:12px 14px;border-radius:12px;font-size:14px;z-index:20;white-space:pre-line;transition:.25s;opacity:0;pointer-events:none;max-width:600px;margin:0 auto}
@@ -135,7 +136,7 @@
 <!-- LOGIN -->
 <div id="login">
   <div class="logo" id="lg-logo"></div>
-  <h2 style="text-align:center;margin:0 0 4px">Stock Bodegas</h2>
+  <h2 style="text-align:center;margin:0 auto 4px">Stock Bodegas</h2>
   <p class="muted" style="text-align:center;margin-top:0" id="lg-bods"></p>
   <label>Correo</label>
   <input id="lg-c" type="email" autocomplete="username" placeholder="correo@empresa.cl">
@@ -368,7 +369,7 @@ function call(fn,...a){if(!EN_GAS)return new Promise(async(res,rej)=>{
     try{const r=await fetch(API_URL,{method:'POST',redirect:'follow',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args:a})});
       const t=await r.text();let j;try{j=JSON.parse(t);}catch(x){throw new Error('El servidor no respondió bien. Revisa que Codigo.gs esté actualizado y publicado como Nueva versión.');}
       if(j.ok)res(j.data);else errMsg(j.error,rej);}
-    catch(e){errMsg(e.message==='Failed to fetch'?'Sin conexión a internet. Intenta de nuevo.':e,rej);}});
+    catch(e){errMsg(/fetch|network|load failed/i.test(e.message)?(navigator.onLine===false?'Sin conexión a internet. Intenta de nuevo.':'No se pudo conectar con la planilla. Revisa que Codigo.gs esté actualizado (con doPost) y publicado como Nueva versión con acceso "Cualquier usuario".'):e,rej);}});
   return new Promise((res,rej)=>{
   if(typeof google.script.run[fn]!=='function')return rej(new Error('El código del servidor está desactualizado (falta la función '+fn+'). Reemplaza Codigo.gs en Apps Script, guarda y publica una Nueva versión.'));
   google.script.run.withSuccessHandler(res).withFailureHandler(e=>{
