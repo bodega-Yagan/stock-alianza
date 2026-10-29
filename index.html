@@ -761,6 +761,7 @@ function arrancar(){call('getConfig').then(cfg=>{S.bod=cfg.bodegas;S.cor=cfg.cor
 arrancar();
 document.addEventListener('click',e=>{if(!e.target.closest('.search'))document.querySelectorAll('.res').forEach(r=>r.innerHTML='');});
 </script>
+<div id="app-ver" style="position:fixed;left:8px;bottom:4px;font-size:11px;color:#8a99ad;z-index:5;pointer-events:none">versión 29-10 · solo con stock</div>
 <button id="btn-inst" class="hidden" onclick="instalarApp()" style="position:fixed;right:14px;bottom:14px;z-index:30;background:#4fb1d7;color:#072c5f;border:0;border-radius:24px;padding:12px 18px;font-weight:700;font-size:15px;box-shadow:0 4px 14px #0003">⬇ Instalar app</button>
 <script>
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
