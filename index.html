@@ -760,10 +760,10 @@ let pedidoInst=null;const yaInstalada=()=>matchMedia('(display-mode: standalone)
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();pedidoInst=e;if(!yaInstalada())document.getElementById('btn-inst').classList.remove('hidden');});
 window.addEventListener('appinstalled',()=>{document.getElementById('btn-inst').classList.add('hidden');});
 // iPhone/iPad: Safari no tiene botón automático; se muestra la instrucción
-if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&!yaInstalada())document.getElementById('btn-inst').classList.remove('hidden');
+if(!yaInstalada())document.getElementById('btn-inst').classList.remove('hidden');
 async function instalarApp(){
   if(pedidoInst){pedidoInst.prompt();const r=await pedidoInst.userChoice;pedidoInst=null;if(r.outcome==='accepted')document.getElementById('btn-inst').classList.add('hidden');return;}
-  alert(/iphone|ipad|ipod/i.test(navigator.userAgent)?'En iPhone: abre esta página en Safari, toca el botón Compartir (cuadrado con flecha) y elige "Agregar a inicio".':'En Chrome: menú ⋮ → "Transmitir, guardar y compartir" → "Instalar página como app" (o el ícono de instalar en la barra de direcciones).');}
+  alert(/iphone|ipad|ipod/i.test(navigator.userAgent)?'En iPhone: abre esta página en Safari, toca el botón Compartir (cuadrado con flecha) y elige "Agregar a inicio".':'Chrome todavía no habilita la instalación automática.\n\nHazlo así: menú ⋮ (arriba a la derecha) → "Transmitir, guardar y compartir" → "Instalar página como app".\n\nTambién puede aparecer un ícono de pantalla con flecha al lado derecho de la barra de direcciones.\n\nSi no aparece ninguna opción, recarga con Ctrl+F5 y espera unos segundos.');}
 </script>
 </body>
 </html>
