@@ -368,7 +368,8 @@ const tot=sku=>S.bod.reduce((a,b)=>a+stk(sku,b),0);
 // Menús de productos: por defecto solo muestran los que tienen stock cargado (operarios no ven stock: sin filtro)
 const hayStock=()=>Object.keys(S.stock||{}).length>0;
 const conStock=()=>hayStock()?new Set(Object.keys(S.stock).filter(k=>tot(k)!==0)):null;
-const conStockEn=b=>()=>hayStock()?new Set(Object.keys(S.stock).filter(k=>stk(k,b())>0)):null;
+const conStockEn=b=>()=>hayStock()?new Set(Object.keys(S.stock).filter(k=>stk(k,b())>0)):(S.disp?new Set(S.disp[b()]||[]):null);
+const verCant=()=>S.user&&S.user.rol==='ADMIN';
 const corto=b=>S.cor[S.bod.indexOf(b)]||b;
 
 // Funciona dentro de Apps Script (google.script.run) y como app instalable en GitHub (fetch a la URL /exec)
@@ -429,7 +430,7 @@ class LineEditor{
   constructor(box,opts){this.o=opts;this.lines=[];
     box.innerHTML='<div class="search"><input class="q" type="search" placeholder="🔎 Agregar producto por nombre o SKU" autocomplete="off"><div class="res"></div></div><div class="lines"></div>';
     this.q=box.querySelector('.q');this.box=box.querySelector('.lines');
-    this.cb=combo(this.q,box.querySelector('.res'),p=>{this.agregar(p.sku);this.q.value='';},p=>`${esc(corto(this.o.bodega()))}: ${fmtN(stk(p.sku,this.o.bodega()))}`,conStockEn(this.o.bodega),true);
+    this.cb=combo(this.q,box.querySelector('.res'),p=>{this.agregar(p.sku);this.q.value='';},p=>verCant()?`${esc(corto(this.o.bodega()))}: ${fmtN(stk(p.sku,this.o.bodega()))}`:`${esc(p.und||'')}`,conStockEn(this.o.bodega),true);
     this.box.addEventListener('input',e=>{const i=e.target.dataset.i;if(i!=null)this.lines[i].cant=e.target.value;});
     this.box.addEventListener('click',e=>{const b=e.target.closest('[data-del]');if(b){this.lines.splice(+b.dataset.del,1);this.render();}});
     this.render();}
@@ -437,7 +438,7 @@ class LineEditor{
     this.lines.push({sku,cant:''});this.render();const inp=this.box.querySelector(`[data-i="${this.lines.length-1}"]`);inp&&inp.focus();}
   render(){const b=this.o.bodega();if(this.cb&&this.q.value.trim())this.cb.draw();
     this.box.innerHTML=this.lines.map((l,i)=>{const p=S.pmap[l.sku]||{};
-      return `<div class="line"><div class="li"><b>${esc(l.sku)}</b> ${esc(p.desc||'')}<br><small>Disponible en ${esc(corto(b))}: <b>${fmtN(stk(l.sku,b))}</b> ${esc(p.und||'')}</small></div>
+      return `<div class="line"><div class="li"><b>${esc(l.sku)}</b> ${esc(p.desc||'')}<br><small>${verCant()?`Disponible en ${esc(corto(b))}: <b>${fmtN(stk(l.sku,b))}</b> ${esc(p.und||'')}`:`Desde ${esc(corto(b))} · ${esc(p.und||'')}`}</small></div>
       <input type="number" inputmode="decimal" min="0" step="any" data-i="${i}" value="${esc(l.cant)}" placeholder="Cant.">
       <button class="x" data-del="${i}">✕</button></div>`;}).join('')||'<div class="empty">Busca y agrega los productos traspasados</div>';}
   datos(){return this.lines.map(l=>({sku:l.sku,cant:l.cant}));}
@@ -464,20 +465,22 @@ function salir(silencioso){if(S.token&&!silencioso)call('logout',S.token).catch(
 const TABS=[['inicio','🏠 Inicio',0],['ficha','🔎 Ficha',1],['traspaso','🚚 Traspaso',1],['stock','📊 Stock',1],['inventario','📋 Inventario',1],['conteo','📝 Conteo',0],['historial','🧾 Registro',1],['cuadre','⚖️ Cuadre ERP',1]];
 function armarTabs(rol){const adm=rol==='ADMIN';S.user.rol=rol;
   el('hd-user').textContent=S.user.nombre+(adm?' · Admin':' · Operario');
-  el('tabs').innerHTML=TABS.filter(t=>adm||!t[2]).map(t=>`<button data-t="${t[0]}" onclick="tab('${t[0]}')">${t[1]}</button>`).join('');
+  el('tabs').innerHTML=TABS.filter(t=>adm||!t[2]||(t[0]==='traspaso'&&S.user.traspaso)).map(t=>`<button data-t="${t[0]}" onclick="tab('${t[0]}')">${t[1]}</button>`).join('');
   tab('inicio');}
 function tab(t){document.querySelectorAll('main section').forEach(s=>s.classList.toggle('hidden',s.id!=='t-'+t));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   if(t==='historial'&&!el('hi-list').innerHTML)cargarHistorial(null);
   if(t==='inventario'&&el('iv-rev').classList.contains('hidden'))cargarInventarios();
   if(t==='conteo')cargarMisConteos();
+  if(t==='traspaso'&&S.user.rol!=='ADMIN'&&!val('tr-inf'))el('tr-inf').value=S.user.nombre||'';
   if(t==='inicio')cargarPanel();
   window.scrollTo(0,0);}
 
 /* ---------- DATOS + ACTUALIZACIÓN AUTOMÁTICA ---------- */
 async function recargar(){const d=await call('getDatos',S.token);
   S.productos=d.productos.sort((a,b)=>a.desc.localeCompare(b.desc));S.pmap={};S.productos.forEach(p=>S.pmap[p.sku]=p);
-  S.stock=d.stock||{};S.inventarios=d.inventarios||[];el('hd-hora').textContent=d.hora;
+  S.stock=d.stock||{};S.disp=d.disp||null;S.inventarios=d.inventarios||[];el('hd-hora').textContent=d.hora;
+  const tr=!!(d.user&&d.user.traspaso);if(tr!==!!S.user.traspaso){S.user.traspaso=tr;armarTabs(S.user.rol);}
   if(d.user&&d.user.rol!==S.user.rol){S.user.rol=d.user.rol;try{localStorage.setItem('alz_ses',JSON.stringify(S.user));}catch(e){}armarTabs(d.user.rol);}
   renderTodo();renderInvSel();}
 async function refrescar(b){b.disabled=true;try{await recargar();toast('Actualizado','ok');if(S.sel)cargarMovFicha();}catch(e){toast(e.message,'err');}finally{b.disabled=false;}}
@@ -762,7 +765,7 @@ function arrancar(){call('getConfig').then(cfg=>{S.bod=cfg.bodegas;S.cor=cfg.cor
 arrancar();
 document.addEventListener('click',e=>{if(!e.target.closest('.search'))document.querySelectorAll('.res').forEach(r=>r.innerHTML='');});
 </script>
-<div id="app-ver" style="position:fixed;left:8px;bottom:4px;font-size:11px;color:#8a99ad;z-index:5;pointer-events:none">versión 29-10 B · app</div>
+<div id="app-ver" style="position:fixed;left:8px;bottom:4px;font-size:11px;color:#8a99ad;z-index:5;pointer-events:none">versión 29-10 C · app</div>
 <button id="btn-inst" class="hidden" onclick="instalarApp()" style="position:fixed;right:14px;bottom:14px;z-index:30;background:#4fb1d7;color:#072c5f;border:0;border-radius:24px;padding:12px 18px;font-weight:700;font-size:15px;box-shadow:0 4px 14px #0003">⬇ Instalar app</button>
 <script>
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
