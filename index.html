@@ -775,10 +775,17 @@ function arrancar(){call('getConfig').then(cfg=>{S.bod=cfg.bodegas;S.cor=cfg.cor
 arrancar();
 document.addEventListener('click',e=>{if(!e.target.closest('.search'))document.querySelectorAll('.res').forEach(r=>r.innerHTML='');});
 </script>
-<div id="app-ver" style="position:fixed;left:8px;bottom:4px;font-size:11px;color:#8a99ad;z-index:5;pointer-events:none">versión 30-10 · app</div>
+<div id="app-ver" style="position:fixed;left:8px;bottom:4px;font-size:11px;color:#8a99ad;z-index:5;pointer-events:none">versión 30-10b · app</div>
 <button id="btn-inst" class="hidden" onclick="instalarApp()" style="position:fixed;right:14px;bottom:14px;z-index:30;background:#4fb1d7;color:#072c5f;border:0;border-radius:24px;padding:12px 18px;font-weight:700;font-size:15px;box-shadow:0 4px 14px #0003">⬇ Instalar app</button>
 <script>
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+// Autoactualización: si hay una versión publicada más nueva que esta copia, limpia lo guardado y recarga sola
+const APP_VER='30-10b';
+window.addEventListener('load',()=>{fetch('version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(async v=>{v=(v||'').trim();
+  if(!v||v===APP_VER)return;let k='alz_upd_'+v;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,'1');}catch(e){}
+  try{const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()));}catch(e){}
+  try{const ks=await caches.keys();await Promise.all(ks.filter(x=>x.indexOf('stock-alianza')===0).map(x=>caches.delete(x)));}catch(e){}
+  location.replace(location.pathname+'?v='+encodeURIComponent(v));}).catch(()=>{});});
 let pedidoInst=null;const yaInstalada=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone;
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();pedidoInst=e;if(!yaInstalada())document.getElementById('btn-inst').classList.remove('hidden');});
 window.addEventListener('appinstalled',()=>{document.getElementById('btn-inst').classList.add('hidden');});
