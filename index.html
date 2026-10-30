@@ -236,8 +236,10 @@
     <!-- STOCK GENERAL -->
     <section id="t-stock" class="hidden">
       <input id="st-q" type="search" placeholder="🔎 Filtrar por nombre o SKU" oninput="renderStock()">
-      <div class="chips">
+      <div class="chips" id="st-bods"></div>
+      <div class="chips" style="align-items:center">
         <button class="chip on" id="st-con" onclick="this.classList.toggle('on');renderStock()">Solo con stock</button>
+        <button class="chip" style="margin-left:auto;background:#1d6f42;color:#fff;border-color:#1d6f42;font-weight:700" onclick="exportarStock(this)">⬇ Exportar a Excel</button>
       </div>
       <div id="st-res"></div>
     </section>
@@ -546,14 +548,45 @@ function enviarTraspaso(btn){const d={origen:val('tr-o'),destino:val('tr-d'),lin
     toast(`Traspaso ${r.folio} registrado ✔`,'ok');verDoc(r.folio);});}
 
 /* ---------- STOCK GENERAL ---------- */
-function renderStock(){const w=norm(val('st-q')).split(/\s+/).filter(Boolean);const con=el('st-con').classList.contains('on');
+/* filtro por bodega: '' = las tres */
+S.stBod='';
+function stBods(){el('st-bods').innerHTML=[['','Todas las bodegas']].concat(S.bod.map((b,i)=>[b,S.cor[i]])).map(([b,c])=>
+  `<button class="chip ${S.stBod===b?'on':''}" onclick="S.stBod='${esc(b)}';renderStock()">${esc(c)}</button>`).join('');}
+function stockFiltrado(){const w=norm(val('st-q')).split(/\s+/).filter(Boolean);const con=el('st-con').classList.contains('on');
+  const bs=S.stBod?[S.stBod]:S.bod;
   let L=S.productos.filter(p=>{const n=norm(p.sku+' '+p.desc);return w.every(x=>n.includes(x));});
-  if(con)L=L.filter(p=>S.bod.some(b=>stk(p.sku,b)!==0));
-  const T=S.bod.map(b=>L.reduce((a,p)=>a+stk(p.sku,b),0));const n=L.length;L=L.slice(0,300);
-  el('st-res').innerHTML=`<p class="muted">${n} productos${n>300?' (mostrando 300, filtra para ver más)':''} · toca uno para abrir su ficha</p>
-   <div style="overflow-x:auto"><table><tr><th>Producto</th>${S.cor.map(c=>`<th class="n">${esc(c)}</th>`).join('')}<th class="n">Total</th></tr>
-   ${L.map(p=>`<tr class="click" data-sku="${esc(p.sku)}"><td><b>${esc(p.sku)}</b><br><small>${esc(p.desc)}</small></td>${S.bod.map(b=>{const v=stk(p.sku,b);return `<td class="n ${v<0?'difn':''}">${fmtN(v)}</td>`;}).join('')}<td class="n"><b>${fmtN(tot(p.sku))}</b></td></tr>`).join('')}
-   <tr><td><b>TOTAL</b></td>${T.map(v=>`<td class="n"><b>${fmtN(v)}</b></td>`).join('')}<td class="n"><b>${fmtN(T.reduce((a,b)=>a+b,0))}</b></td></tr></table></div>`;}
+  if(con)L=L.filter(p=>bs.some(b=>stk(p.sku,b)!==0));
+  return {L,bs,con,q:val('st-q').trim()};}
+function renderStock(){stBods();const {L:all,bs}=stockFiltrado();const uno=bs.length===1;
+  const cols=bs.map(b=>S.cor[S.bod.indexOf(b)]);const T=bs.map(b=>all.reduce((a,p)=>a+stk(p.sku,b),0));const n=all.length;const L=all.slice(0,300);
+  const totP=p=>bs.reduce((a,b)=>a+stk(p.sku,b),0);
+  el('st-res').innerHTML=`<p class="muted">${n} productos${uno?' en '+esc(bs[0]):''}${n>300?' (mostrando 300, filtra para ver más; el Excel trae todos)':''} · toca uno para abrir su ficha</p>
+   <div style="overflow-x:auto"><table><tr><th>Producto</th>${cols.map(c=>`<th class="n">${esc(c)}</th>`).join('')}${uno?'':'<th class="n">Total</th>'}</tr>
+   ${L.map(p=>`<tr class="click" data-sku="${esc(p.sku)}"><td><b>${esc(p.sku)}</b><br><small>${esc(p.desc)}</small></td>${bs.map(b=>{const v=stk(p.sku,b);return `<td class="n ${v<0?'difn':''}">${fmtN(v)}</td>`;}).join('')}${uno?'':`<td class="n"><b>${fmtN(totP(p))}</b></td>`}</tr>`).join('')}
+   <tr><td><b>TOTAL</b></td>${T.map(v=>`<td class="n"><b>${fmtN(v)}</b></td>`).join('')}${uno?'':`<td class="n"><b>${fmtN(T.reduce((a,b)=>a+b,0))}</b></td>`}</tr></table></div>`;}
+
+/* exportar a Excel lo que está filtrado en pantalla (todas las filas) */
+function cargarXLSX(){return window.XLSX?Promise.resolve():new Promise((ok,ko)=>{const sc=document.createElement('script');
+  sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';sc.onload=ok;sc.onerror=ko;document.head.appendChild(sc);});}
+async function exportarStock(btn){const {L,bs,con,q}=stockFiltrado();if(!L.length)return toast('No hay productos para exportar','err');
+  const uno=bs.length===1;const cols=bs.map(b=>b);
+  const head=['SKU','Descripción','Unidad'].concat(cols,uno?[]:['Total']);
+  const rows=L.map(p=>{const v=bs.map(b=>stk(p.sku,b));return [p.sku,p.desc,p.und||''].concat(v,uno?[]:[v.reduce((a,b)=>a+b,0)]);});
+  const T=bs.map((b,i)=>rows.reduce((a,r)=>a+r[3+i],0));rows.push(['TOTAL','','',...T,...(uno?[]:[T.reduce((a,b)=>a+b,0)])]);
+  const f=new Date();const fecha=f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-'+String(f.getDate()).padStart(2,'0');
+  const nombre='Stock_'+(uno?S.cor[S.bod.indexOf(bs[0])]:'3_bodegas')+'_'+fecha;
+  const tx=btn.textContent;btn.disabled=true;btn.textContent='Generando...';
+  try{await cargarXLSX();
+    const info=[['Stock Bodegas Alianza'],['Fecha',f.toLocaleString('es-CL')],['Bodega',uno?bs[0]:'Todas'],['Filtro',q||'(sin filtro)'],['Solo con stock',con?'Sí':'No'],[]];
+    const ws=XLSX.utils.aoa_to_sheet(info.concat([head],rows));
+    ws['!cols']=[{wch:16},{wch:48},{wch:10}].concat(cols.map(()=>({wch:14})),uno?[]:[{wch:12}]);
+    ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:info.length,c:0},e:{r:info.length+rows.length-1,c:head.length-1}})};
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Stock');XLSX.writeFile(wb,nombre+'.xlsx');toast('Excel descargado ✔','ok');
+  }catch(e){ // sin internet para la librería: CSV que Excel abre igual
+    const csv='\ufeff'+[head].concat(rows).map(r=>r.map(x=>{x=String(x);return /[;"\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x;}).join(';')).join('\r\n');
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download=nombre+'.csv';document.body.appendChild(a);a.click();setTimeout(()=>{a.remove();URL.revokeObjectURL(a.href);},3000);
+    toast('Descargado como CSV (se abre en Excel)','ok');
+  }finally{btn.disabled=false;btn.textContent=tx;}}
 document.addEventListener('click',e=>{const r=e.target.closest('tr.click[data-sku]');if(r&&S.pmap[r.dataset.sku])seleccionar(S.pmap[r.dataset.sku]);});
 
 /* ---------- REGISTRO ---------- */
@@ -775,12 +808,12 @@ function arrancar(){call('getConfig').then(cfg=>{S.bod=cfg.bodegas;S.cor=cfg.cor
 arrancar();
 document.addEventListener('click',e=>{if(!e.target.closest('.search'))document.querySelectorAll('.res').forEach(r=>r.innerHTML='');});
 </script>
-<div id="app-ver" style="position:fixed;left:8px;bottom:4px;font-size:11px;color:#8a99ad;z-index:5;pointer-events:none">versión 30-10b · app</div>
+<div id="app-ver" style="position:fixed;left:8px;bottom:4px;font-size:11px;color:#8a99ad;z-index:5;pointer-events:none">versión 30-10c · app</div>
 <button id="btn-inst" class="hidden" onclick="instalarApp()" style="position:fixed;right:14px;bottom:14px;z-index:30;background:#4fb1d7;color:#072c5f;border:0;border-radius:24px;padding:12px 18px;font-weight:700;font-size:15px;box-shadow:0 4px 14px #0003">⬇ Instalar app</button>
 <script>
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 // Autoactualización: si hay una versión publicada más nueva que esta copia, limpia lo guardado y recarga sola
-const APP_VER='30-10b';
+const APP_VER='30-10c';
 window.addEventListener('load',()=>{fetch('version.txt?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(async v=>{v=(v||'').trim();
   if(!v||v===APP_VER)return;let k='alz_upd_'+v;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,'1');}catch(e){}
   try{const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()));}catch(e){}
